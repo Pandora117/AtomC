@@ -1,32 +1,33 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <termio.h>
 #include <unistd.h>
 #include <ctype.h>
 #include <errno.h>
 
-// Define a struct of type termios to modify the terminal's attributes
-struct termios original_termios;
+#include "../config/EditorConfig.c"
 
 // Print a Descriptive Error Message in case of an error
 void die(const char *s) {
+    write(STDOUT_FILENO, "\x1b[2J", 4);
+    write(STDOUT_FILENO, "\x1b[H", 3);
+
     perror(s);
     exit(1);
 }
 
 // Disable RAW Mode when Exiting
 void disableRawMode() {
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_termios) == -1) die("tcsetattr\n");
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.original_termios) == -1) die("tcsetattr\n");
 }
 
 // This method turns off ECHO in the terminal
 // Hence, we do not see anything printed when we type
 void enableRawMode() {
     // Get the Current Terminal Attributes into our struct
-    tcgetattr(STDIN_FILENO, &original_termios);
+    tcgetattr(STDIN_FILENO, &E.original_termios);
     atexit(disableRawMode);
     
-    struct termios raw = original_termios;
+    struct termios raw = E.original_termios;
     // Modify the terminal attributes to turn off
     /*
         Flag        Description
