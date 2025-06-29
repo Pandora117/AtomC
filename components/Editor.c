@@ -3,12 +3,12 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/ioctl.h>
+#include <stdarg.h>
 
 #include "../config/EditorConfig.c"
-#include "error.c"
+#include "Error.c"
+#include "../config/Constants.c"
 
-#define ATOMC_VERSION "0.0.1"
-#define CTRL_KEY(k) ((k) & 0x1f)
 
 enum editorKey {
     ARROW_LEFT = 1000,
@@ -40,9 +40,11 @@ void abAppend(struct abuf *ab, const char *s, int len) {
     ab->len += len;
 }
 
+
 void abFree(struct abuf *ab) {
     free(ab->b);
 }
+
 
 // This method waits for one key press
 // and then simply returns it
@@ -95,23 +97,37 @@ int editorReadKey() {
     } else return c;
 }
 
+
 // Move the Cursor via WASD
 void editorMoveCursor(int key) {
+    erow *row = (E.cy >= E.numrows) ? NULL: &E.row[E.cy];
+
     switch(key) {
         case ARROW_LEFT:
             if (E.cx != 0) E.cx--;
+            else if (E.cy > 0) {
+                E.cy--;
+                E.cx = E.row[E.cy].size;
+            }
             break;
         case ARROW_UP:
             if (E.cy != 0) E.cy--;
             break;
         case ARROW_DOWN:
-            if (E.cy != E.screenrows - 1) E.cy++;
+            if (E.cy < E.numrows) E.cy++;
             break;
         case ARROW_RIGHT:
-            if (E.cx != E.screencols - 1) E.cx++;
+            if (row && E.cx < row->size) E.cx++;
+            else if (row && E.cx == row->size) {
+                E.cy++;
+                E.cx = 0;
+            }
             break;
     }
 
+    row = (E.cy >= E.numrows) ? NULL: &E.row[E.cy];
+    int rowlen = row ? row->size: 0;
+    if (E.cx > rowlen) E.cx = rowlen;
 }
 
 
@@ -131,12 +147,17 @@ void editorProcessKeypress() {
             break;
         
         case END_KEY:
-            E.cx = E.screencols - 1;
+            if (E.cy < E.numrows) E.cx = E.row[E.cy].size;
             break;
         
         case PAGE_UP:
         case PAGE_DOWN:
-            {
+            {   
+                if (c == PAGE_UP) E.cy = E.rowoff;
+                else if (c == PAGE_DOWN) {
+                    E.cy = E.rowoff + E.screenrows - 1;
+                    if (E.cy > E.numrows) E.cy = E.numrows;
+                }
                 int times = E.screenrows;
                 while (times--) 
                     editorMoveCursor(c == PAGE_UP ? ARROW_UP: ARROW_DOWN);
@@ -152,10 +173,13 @@ void editorProcessKeypress() {
     }
 }
 
+
 // Draw a Row of Tilde's on the Screen
 void editorDrawRows(struct abuf *ab) {
-    for (int y = 0; y < E.screenrows; y++) {
-        if (y >= E.numrows) {
+    int y;
+    for (y = 0; y < E.screenrows; y++) {
+        int filerow = y + E.rowoff;
+        if (filerow >= E.numrows) {
             if (E.numrows == 0 && y == E.screenrows / 3) {
                 char welcome[80];
                 int welcomelen = snprintf(welcome, sizeof(welcome),
@@ -173,28 +197,100 @@ void editorDrawRows(struct abuf *ab) {
                 abAppend(ab, welcome, welcomelen);
             } else abAppend(ab, "~", 1);
         } else {
-            int len = E.row.size;
+            int len = E.row[filerow].rsize - E.coloff;
+            len = len < 0 ? 0: len;
             if (len > E.screencols) len = E.screencols;
-            abAppend(ab, E.row.chars, len);
+            abAppend(ab, &E.row[filerow].render[E.coloff], len);
         }
         
         abAppend(ab, "\x1b[K", 3);
-        if (y < E.screenrows - 1) {
-            abAppend(ab, "\r\n", 2);
-        }
+        abAppend(ab, "\r\n", 2);
     }
 }
 
+
+int editorRowCxToRx(erow *row, int cx) {
+    int rx = 0;
+    int j;
+    for (j = 0; j < cx; j++) {
+        if (row->chars[j] == '\t') rx += (TAB_STOP - 1) - (rx % TAB_STOP);
+        rx++;
+    }
+    return rx;
+}
+
+
+void editorScroll() {
+    E.rx = 0;
+    if (E.cy < E.numrows) E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+
+    // Vertical Scrolling
+    if (E.cy < E.rowoff) E.rowoff = E.cy;
+    if (E.cy >= E.rowoff + E.screenrows) E.rowoff = E.cy - E.screenrows + 1;
+
+    // Horizontal Scrolling
+    if (E.rx < E.coloff) E.coloff = E.rx;
+    if (E.rx >= E.coloff + E.screencols) E.coloff = E.rx - E.screencols + 1;
+}
+
+
+void editorDrawStatusBar(struct abuf *ab) {
+    abAppend(ab, "\x1b[7m", 4);
+    char status[80], rstatus[80];
+    int len = snprintf(status, sizeof(status), "%.20s - %d lines",
+                        E.filename ? E.filename: "[No Name]", E.numrows);
+
+    int rlen = snprintf(rstatus, sizeof(rstatus), "%d%d",
+                        E.cy + 1, E.numrows);
+
+    if (len > E.screencols) len = E.screencols;
+    abAppend(ab, status, len);
+
+    while (len < E.screencols) {
+        if (E.screencols - len == rlen) {
+            abAppend(ab, rstatus, rlen);
+            break;
+        } else {
+            abAppend(ab, " ", 1);
+            len++;
+        }
+    }
+    abAppend(ab, "\x1b[m", 3);
+    abAppend(ab, "\r\n", 2);
+}
+
+
+void editorSetStatusMessage(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+    va_end(ap);
+    E.statusmsg_time = time(NULL);
+}
+
+
+void editorDrawMessageBar(struct abuf *ab) {
+    abAppend(ab, "\x1b[K", 3);
+    int msglen = strlen(E.statusmsg);
+    if (msglen > E.screencols) msglen = E.screencols;
+    if (msglen && time(NULL) - E.statusmsg_time < 5) abAppend(ab, E.statusmsg, msglen);
+}
+
+
 void editorRefreshScreen() {
+    editorScroll();
+
     struct abuf ab = ABUF_INIT;
 
     abAppend(&ab, "\x1b[?25l", 6);
     abAppend(&ab, "\x1b[H", 3);
 
     editorDrawRows(&ab);
+    editorDrawStatusBar(&ab);
+    editorDrawMessageBar(&ab);
 
     char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1);
     abAppend(&ab, buf, strlen(buf));
 
     abAppend(&ab, "\x1b[?25h", 6);
@@ -202,6 +298,7 @@ void editorRefreshScreen() {
     write(STDOUT_FILENO, ab.b, ab.len);
     abFree(&ab);
 }
+
 
 // Get Cursor Position
 int getCursorPosition(int *rows, int *cols) {
@@ -220,7 +317,7 @@ int getCursorPosition(int *rows, int *cols) {
 
     if (buf[0] != '\x1b' || buf[1] != '[') return -1;
     if (sscanf(&buf[2], "%d;%d", rows, cols) != 2) return -1;
-    printf("\r\n&buf[1]: '%s'\r\n", &buf[1]);
+    // printf("\r\n&buf[1]: '%s'\r\n", &buf[1]);
 
     return 0;
 }

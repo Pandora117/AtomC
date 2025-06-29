@@ -4,7 +4,7 @@
 #include <ctype.h>
 
 #include "../config/EditorConfig.c"
-#include "error.c"
+#include "Error.c"
 
 // Disable RAW Mode when Exiting
 void disableRawMode() {
