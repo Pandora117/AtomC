@@ -5,11 +5,11 @@
 #include <sys/ioctl.h>
 
 #include "../config/EditorConfig.c"
+#include "error.c"
 
 #define ATOMC_VERSION "0.0.1"
 #define CTRL_KEY(k) ((k) & 0x1f)
 
-// To Replace WSAD with Arrow Keys
 enum editorKey {
     ARROW_LEFT = 1000,
     ARROW_RIGHT,
@@ -30,6 +30,7 @@ struct abuf {
 
 #define ABUF_INIT {NULL, 0}
 
+
 void abAppend(struct abuf *ab, const char *s, int len) {
     char *new = realloc(ab->b, ab->len + len);
 
@@ -42,7 +43,6 @@ void abAppend(struct abuf *ab, const char *s, int len) {
 void abFree(struct abuf *ab) {
     free(ab->b);
 }
-
 
 // This method waits for one key press
 // and then simply returns it
@@ -155,23 +155,27 @@ void editorProcessKeypress() {
 // Draw a Row of Tilde's on the Screen
 void editorDrawRows(struct abuf *ab) {
     for (int y = 0; y < E.screenrows; y++) {
-        if (y == E.screenrows / 3) {
-            char welcome[80];
-            int welcomelen = snprintf(welcome, sizeof(welcome),
-        "AtomC Editor -- Version %s", ATOMC_VERSION);
-        if (welcomelen > E.screencols) welcomelen = E.screencols;
+        if (y >= E.numrows) {
+            if (E.numrows == 0 && y == E.screenrows / 3) {
+                char welcome[80];
+                int welcomelen = snprintf(welcome, sizeof(welcome),
+                                "AtomC Editor -- Version %s", ATOMC_VERSION);
+                if (welcomelen > E.screencols) welcomelen = E.screencols;
 
-        // Center Align the Welcome Message
-        int padding = (E.screencols - welcomelen) / 2;
-        if (padding) {
-            abAppend(ab, "~", 1);
-            padding--;
-        }
-        while (padding--) abAppend(ab, " ", 1);
+                // Center Align the Welcome Message
+                int padding = (E.screencols - welcomelen) / 2;
+                if (padding) {
+                    abAppend(ab, "~", 1);
+                    padding--;
+                }
+                while (padding--) abAppend(ab, " ", 1);
 
-        abAppend(ab, welcome, welcomelen);
+                abAppend(ab, welcome, welcomelen);
+            } else abAppend(ab, "~", 1);
         } else {
-            abAppend(ab, "~", 1);
+            int len = E.row.size;
+            if (len > E.screencols) len = E.screencols;
+            abAppend(ab, E.row.chars, len);
         }
         
         abAppend(ab, "\x1b[K", 3);

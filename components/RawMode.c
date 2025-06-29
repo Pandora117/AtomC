@@ -2,18 +2,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <ctype.h>
-#include <errno.h>
 
 #include "../config/EditorConfig.c"
-
-// Print a Descriptive Error Message in case of an error
-void die(const char *s) {
-    write(STDOUT_FILENO, "\x1b[2J", 4);
-    write(STDOUT_FILENO, "\x1b[H", 3);
-
-    perror(s);
-    exit(1);
-}
+#include "error.c"
 
 // Disable RAW Mode when Exiting
 void disableRawMode() {
