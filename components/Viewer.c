@@ -10,6 +10,7 @@
 #include "Error.c"
 #include "../config/Constants.c"
 #include "Editor.c"
+#include "Search.c"
 
 
 // A buffer to consolidate all of our writes
@@ -153,6 +154,10 @@ void editorProcessKeypress() {
         
         case END_KEY:
             if (E.cy < E.numrows) E.cx = E.row[E.cy].size;
+            break;
+
+        case CTRL_KEY('f'):
+            editorFind();
             break;
         
         case BACKSPACE:

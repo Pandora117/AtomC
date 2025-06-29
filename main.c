@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
     initEditor();
     if (argc >= 2) editorOpen(argv[1]);
 
-    editorSetStatusMessage("HELP: CTRL+S -> Save | CTRL+Q -> Quit");
+    editorSetStatusMessage("HELP: CTRL+S -> Save | CTRL+F -> Find | CTRL+Q -> Quit");
 
     /* Enable the Terminal to enter RAW Mode by
     contineously reading from terminal 1 char at a time */
