@@ -2,10 +2,12 @@
 #include <unistd.h>
 
 #include "components/RawMode.c"
+#include "components/Viewer.c"
 #include "components/Editor.c"
 #include "config/EditorConfig.c"
-#include "components/TextViewer.c"
+#include "components/EditorFunctions.c"
 #include "components/Error.c"
+
 
 void initEditor() {
     E.cx = 0;
@@ -15,6 +17,7 @@ void initEditor() {
     E.coloff = 0;
     E.numrows = 0;
     E.row = NULL;
+    E.dirty = 0;
     E.filename = NULL;
     E.statusmsg[0] = '\0';
     E.statusmsg_time = 0;
@@ -28,7 +31,7 @@ int main(int argc, char *argv[]) {
     initEditor();
     if (argc >= 2) editorOpen(argv[1]);
 
-    editorSetStatusMessage("HELP: CTRL+Q -> Quit");
+    editorSetStatusMessage("HELP: CTRL+S -> Save | CTRL+Q -> Quit");
 
     /* Enable the Terminal to enter RAW Mode by
     contineously reading from terminal 1 char at a time */
